@@ -48,33 +48,34 @@ def api_videos():
 def get_stream():
     target_url = request.args.get('url')
     if not target_url:
-        response = make_response(jsonify({"error": "No URL"}))
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response, 400
+        return jsonify({"error": "No URL"}), 400
     
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        req = requests.get(target_url, headers=headers, timeout=10)
-        stream_match = re.search(r'https://[^"]+\.m3u8[^"]*', req.text)
+        model_name = target_url.split('/')[-1].split('?')[0].lower()
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Referer': 'https://stripchat.com/'
+        }
         
-        stream_url = ""
-        if stream_match:
-            stream_url = stream_match.group(0).replace('\\/', '/')
-        elif 'stripchat.com' in target_url:
-            model_name = target_url.split('/')[-1].split('?')[0].lower()
-            stream_url = f"https://b-hls-03.doppiocdn.com/hls/{model_name}/master/{model_name}.m3u8"
+        # ১. আমরা ৩টি আলাদা সার্ভার ট্রাই করব যাতে কোনো এরর না আসে
+        servers = ["b-hls-01", "b-hls-02", "b-hls-03", "b-hls-05", "b-hls-10"]
         
-        if stream_url:
-            response = make_response(jsonify({"stream_url": stream_url}))
-        else:
-            response = make_response(jsonify({"error": "Not Found"}))
+        # এই লিঙ্কগুলো সাধারণত কাজ করে
+        for srv in servers:
+            test_url = f"https://{srv}.doppiocdn.com/hls/{model_name}/master/{model_name}.m3u8"
+            check = requests.head(test_url, headers=headers, timeout=5)
+            if check.status_code == 200:
+                return jsonify({"stream_url": test_url})
+
+        # ২. যদি প্যাটার্ন কাজ না করে, পেজ থেকে খোঁজার চেষ্টা
+        response = requests.get(target_url, headers=headers, timeout=10)
+        match = re.search(r'https://[^"]+?\.m3u8', response.text)
+        if match:
+            return jsonify({"stream_url": match.group(0).replace('\\/', '/')})
             
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response
-    except Exception as e:
-        response = make_response(jsonify({"error": str(e)}))
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response
+        return jsonify({"error": "Model is Offline"}), 404
+    except:
+        return jsonify({"error": "Connection Failed"}), 500
 
 # ================= TELEGRAM BOT COMMANDS =================
 @bot.message_handler(commands=['start'])
