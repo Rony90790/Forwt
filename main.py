@@ -48,35 +48,28 @@ def api_videos():
 def get_stream():
     target_url = request.args.get('url')
     if not target_url:
-        return jsonify({"error": "No URL"}), 400
+        response = make_response(jsonify({"error": "No URL provided"}))
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, 400
     
     try:
-        model_name = target_url.split('/')[-1].split('?')[0].lower()
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-            'Referer': 'https://stripchat.com/'
-        }
+        # লিঙ্ক থেকে মডেলের নাম বের করা
+        model_name = target_url.strip('/').split('/')[-1].split('?')[0].lower()
         
-        # ১. আমরা ৩টি আলাদা সার্ভার ট্রাই করব যাতে কোনো এরর না আসে
-        servers = ["b-hls-01", "b-hls-02", "b-hls-03", "b-hls-05", "b-hls-10"]
+        # স্ট্রিপচ্যাটের সবচেয়ে কমন এইচএলএস (HLS) প্যাটার্ন
+        # আমরা সরাসরি এই লিঙ্কটি রিটার্ন করব, এতে সার্ভার ব্লক হওয়ার ভয় নেই
+        stream_url = f"https://b-hls-05.doppiocdn.com/hls/{model_name}/master/{model_name}.m3u8"
         
-        # এই লিঙ্কগুলো সাধারণত কাজ করে
-        for srv in servers:
-            test_url = f"https://{srv}.doppiocdn.com/hls/{model_name}/master/{model_name}.m3u8"
-            check = requests.head(test_url, headers=headers, timeout=5)
-            if check.status_code == 200:
-                return jsonify({"stream_url": test_url})
+        response = make_response(jsonify({"stream_url": stream_url}))
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response
 
-        # ২. যদি প্যাটার্ন কাজ না করে, পেজ থেকে খোঁজার চেষ্টা
-        response = requests.get(target_url, headers=headers, timeout=10)
-        match = re.search(r'https://[^"]+?\.m3u8', response.text)
-        if match:
-            return jsonify({"stream_url": match.group(0).replace('\\/', '/')})
-            
-        return jsonify({"error": "Model is Offline"}), 404
-    except:
-        return jsonify({"error": "Connection Failed"}), 500
-
+    except Exception as e:
+        # এরর হলে আসল কারণ দেখার জন্য
+        response = make_response(jsonify({"error": str(e)}))
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, 500
+        
 # ================= TELEGRAM BOT COMMANDS =================
 @bot.message_handler(commands=['start'])
 def start(message):
