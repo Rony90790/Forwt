@@ -48,24 +48,45 @@ def api_videos():
 def get_stream():
     target_url = request.args.get('url')
     if not target_url:
-        response = make_response(jsonify({"error": "No URL provided"}))
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response, 400
+        return jsonify({"error": "No URL"}), 400
     
     try:
-        # লিঙ্ক থেকে মডেলের নাম বের করা
+        # মডেলের নাম বের করা
         model_name = target_url.strip('/').split('/')[-1].split('?')[0].lower()
         
-        # স্ট্রিপচ্যাটের সবচেয়ে কমন এইচএলএস (HLS) প্যাটার্ন
-        # আমরা সরাসরি এই লিঙ্কটি রিটার্ন করব, এতে সার্ভার ব্লক হওয়ার ভয় নেই
-        stream_url = f"https://b-hls-05.doppiocdn.com/hls/{model_name}/master/{model_name}.m3u8"
+        # প্রধান সার্ভারগুলোর লিস্ট (এগুলোতে থাকার সম্ভাবনা ৯০%)
+        servers = ["b-hls-01", "b-hls-02", "b-hls-03", "b-hls-04", "b-hls-05", "b-hls-06", "b-hls-07", "b-hls-08", "b-hls-09", "b-hls-10"]
         
-        response = make_response(jsonify({"stream_url": stream_url}))
+        found_url = None
+        
+        # দ্রুত চেক করার জন্য লুপ
+        for srv in servers:
+            test_url = f"https://{srv}.doppiocdn.com/hls/{model_name}/master/{model_name}.m3u8"
+            try:
+                # শুধু হেডার চেক করবে (খুবই ফাস্ট)
+                r = requests.head(test_url, timeout=1)
+                if r.status_code == 200:
+                    found_url = test_url
+                    break
+            except:
+                continue
+        
+        if found_url:
+            response = make_response(jsonify({"stream_url": found_url}))
+        else:
+            # যদি কোনোটিতেই না পাওয়া যায়, তবে একদম লেটেস্ট পেজ থেকে খুঁজা
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            res = requests.get(target_url, headers=headers, timeout=5)
+            match = re.search(r'https://[^"]+?\.m3u8', res.text)
+            if match:
+                response = make_response(jsonify({"stream_url": match.group(0).replace('\\/', '/')}))
+            else:
+                response = make_response(jsonify({"error": "Model is Offline"}))
+
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response
 
     except Exception as e:
-        # এরর হলে আসল কারণ দেখার জন্য
         response = make_response(jsonify({"error": str(e)}))
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response, 500
