@@ -51,45 +51,42 @@ def get_stream():
         return jsonify({"error": "No URL"}), 400
     
     try:
-        # মডেলের নাম বের করা
+        # মডেলের নাম বের করা (ক্লিন উপায়ে)
         model_name = target_url.strip('/').split('/')[-1].split('?')[0].lower()
         
-        # প্রধান সার্ভারগুলোর লিস্ট (এগুলোতে থাকার সম্ভাবনা ৯০%)
-        servers = ["b-hls-01", "b-hls-02", "b-hls-03", "b-hls-04", "b-hls-05", "b-hls-06", "b-hls-07", "b-hls-08", "b-hls-09", "b-hls-10"]
+        # ১. স্ট্রিপচ্যাটের মোবাইল এপিআই-তে রিকোয়েস্ট পাঠানো
+        api_url = f"https://stripchat.com/api/front/v2/models/username/{model_name}/config"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': f'https://stripchat.com/{model_name}'
+        }
         
-        found_url = None
+        res = requests.get(api_url, headers=headers, timeout=10)
+        data = res.json()
         
-        # দ্রুত চেক করার জন্য লুপ
-        for srv in servers:
-            test_url = f"https://{srv}.doppiocdn.com/hls/{model_name}/master/{model_name}.m3u8"
-            try:
-                # শুধু হেডার চেক করবে (খুবই ফাস্ট)
-                r = requests.head(test_url, timeout=1)
-                if r.status_code == 200:
-                    found_url = test_url
-                    break
-            except:
-                continue
-        
-        if found_url:
-            response = make_response(jsonify({"stream_url": found_url}))
+        # ২. এপিআই রেসপন্স থেকে m3u8 লিঙ্ক খুঁজে বের করা
+        if 'cam' in data and 'streamName' in data['cam']:
+            stream_name = data['cam']['streamName']
+            # সার্ভার হোস্ট খুঁজে বের করা
+            hls_host = data['cam']['viewServers']['flashphoner-hls']
+            
+            # ফাইনাল m3u8 লিঙ্ক তৈরি
+            stream_url = f"https://{hls_host}.doppiocdn.com/hls/{stream_name}/{stream_name}.m3u8"
+            
+            response = make_response(jsonify({"stream_url": stream_url}))
         else:
-            # যদি কোনোটিতেই না পাওয়া যায়, তবে একদম লেটেস্ট পেজ থেকে খুঁজা
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            res = requests.get(target_url, headers=headers, timeout=5)
-            match = re.search(r'https://[^"]+?\.m3u8', res.text)
-            if match:
-                response = make_response(jsonify({"stream_url": match.group(0).replace('\\/', '/')}))
-            else:
-                response = make_response(jsonify({"error": "Model is Offline"}))
+            response = make_response(jsonify({"error": "Model is Offline"}))
 
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response
 
     except Exception as e:
-        response = make_response(jsonify({"error": str(e)}))
+        # যদি এপিআই কাজ না করে তবে ব্যাকআপ প্যাটার্ন ট্রাই করা
+        fallback_url = f"https://b-hls-01.doppiocdn.com/hls/{model_name}/master/{model_name}.m3u8"
+        response = make_response(jsonify({"stream_url": fallback_url}))
         response.headers['Access-Control-Allow-Origin'] = '*'
-        return response, 500
+        return response
         
 # ================= TELEGRAM BOT COMMANDS =================
 @bot.message_handler(commands=['start'])
