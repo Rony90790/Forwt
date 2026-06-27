@@ -52,36 +52,27 @@ def get_stream():
     
     try:
         model_name = target_url.strip('/').split('/')[-1].split('?')[0].lower()
-        
-        # 🛡️ প্রো-টিপস: রেন্ডার ব্লক এড়াতে মোবাইল এপিআই ব্যবহার
+        # স্ট্রিপচ্যাটের মোবাইল কনফিগ এপিআই (এটি সবচেয়ে ভালো কাজ করে)
         api_url = f"https://stripchat.com/api/front/v2/models/username/{model_name}/config"
+        headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)'}
         
-        # একদম রিয়েল মানুষের মতো হেডার
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Referer': f'https://stripchat.com/{model_name}'
-        }
-
-        # স্ট্রিপচ্যাট থেকে ডাটা আনা
         res = requests.get(api_url, headers=headers, timeout=10)
+        data = res.json()
         
-        if res.status_code == 200:
-            data = res.json()
-            if 'cam' in data and 'streamName' in data['cam']:
-                stream_id = data['cam']['streamName']
-                hls_host = data['cam']['viewServers']['flashphoner-hls']
-                
-                # আসল m3u8 লিঙ্ক
-                stream_url = f"https://{hls_host}.doppiocdn.com/hls/{stream_id}/{stream_id}.m3u8"
-                return jsonify({"stream_url": stream_url})
-        
-        # যদি রেন্ডার ব্লক থাকে, তবে একটি অল্টারনেট প্যাটার্ন গেস করা (লাস্ট চান্স)
+        if 'cam' in data and 'streamName' in data['cam']:
+            stream_id = data['cam']['streamName']
+            hls_host = data['cam']['viewServers']['flashphoner-hls']
+            stream_url = f"https://{hls_host}.doppiocdn.com/hls/{stream_id}/{stream_id}.m3u8"
+            
+            response = make_response(jsonify({"stream_url": stream_url}))
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response
+        else:
+            return jsonify({"error": "Offline"}), 404
+    except:
+        # ব্যাকআপ প্যাটার্ন যদি এপিআই ফেইল করে
         fallback = f"https://b-hls-01.doppiocdn.com/hls/{model_name}/{model_name}.m3u8"
         return jsonify({"stream_url": fallback})
-
-    except Exception as e:
-        return jsonify({"error": "Connection Timeout"}), 500
         
 # ================= TELEGRAM BOT COMMANDS =================
 @bot.message_handler(commands=['start'])
