@@ -51,40 +51,39 @@ def get_stream():
         return jsonify({"error": "No URL"}), 400
     
     try:
-        # মডেলের নাম বের করা (ক্লিন উপায়ে)
+        # ১. মডেলের নাম বের করা
         model_name = target_url.strip('/').split('/')[-1].split('?')[0].lower()
         
-        # ১. স্ট্রিপচ্যাটের মোবাইল এপিআই-তে রিকোয়েস্ট পাঠানো
+        # ২. স্ট্রিপচ্যাটের ইন্টারনাল কনফিগ এপিআই কল করা
         api_url = f"https://stripchat.com/api/front/v2/models/username/{model_name}/config"
         headers = {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Referer': f'https://stripchat.com/{model_name}'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'X-Requested-With': 'XMLHttpRequest'
         }
         
         res = requests.get(api_url, headers=headers, timeout=10)
         data = res.json()
         
-        # ২. এপিআই রেসপন্স থেকে m3u8 লিঙ্ক খুঁজে বের করা
+        # ৩. আসল স্ট্রিম আইডি এবং সার্ভার হোস্ট বের করা
         if 'cam' in data and 'streamName' in data['cam']:
-            stream_name = data['cam']['streamName']
-            # সার্ভার হোস্ট খুঁজে বের করা
-            hls_host = data['cam']['viewServers']['flashphoner-hls']
+            stream_id = data['cam']['streamName'] # এটা আসল ফাইলের নাম
+            hls_host = data['cam']['viewServers']['flashphoner-hls'] # এটা সার্ভার
             
-            # ফাইনাল m3u8 লিঙ্ক তৈরি
-            stream_url = f"https://{hls_host}.doppiocdn.com/hls/{stream_name}/{stream_name}.m3u8"
+            # ফাইনাল m3u8 লিঙ্ক
+            stream_url = f"https://{hls_host}.doppiocdn.com/hls/{stream_id}/{stream_id}.m3u8"
             
             response = make_response(jsonify({"stream_url": stream_url}))
         else:
-            response = make_response(jsonify({"error": "Model is Offline"}))
+            response = make_response(jsonify({"error": "Model is Offline or Private"}))
 
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response
 
     except Exception as e:
-        # যদি এপিআই কাজ না করে তবে ব্যাকআপ প্যাটার্ন ট্রাই করা
-        fallback_url = f"https://b-hls-01.doppiocdn.com/hls/{model_name}/master/{model_name}.m3u8"
-        response = make_response(jsonify({"stream_url": fallback_url}))
+        # এরর হলে একটা গেস করা লিঙ্ক দেওয়া (ব্যাকআপ)
+        model_name = target_url.strip('/').split('/')[-1].split('?')[0].lower()
+        fallback = f"https://b-hls-01.doppiocdn.com/hls/{model_name}/{model_name}.m3u8"
+        response = make_response(jsonify({"stream_url": fallback}))
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response
         
